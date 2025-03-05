@@ -1,28 +1,49 @@
-#include <cmath>
+
 #include <vector>
 #include <iostream>
 #include <string>
 #include "SignalGeneratorImgui.h"
 #include "binary_file.hpp"
 
+# define M_PI           3.14159265358979323846  /* pi */
 
-struct sin_signal {
+class signal {
+public:
+    virtual ~signal() = default;  // Virtual destructor for polymorphism
+    virtual double out(double x) const { return 0; }
+};
+
+class sin_signal : public signal {
+
+public:
+
+    sin_signal(float frequency, float phase, float amplitude)
+        : signal() {  // Initialize base class first
+        this->frequency = frequency;
+        this->phase = phase;
+        this->amplitude = amplitude;
+    }
     float frequency;
     float phase;
     float amplitude;
+    double out(double x) const override {
+        double y;
+        y = amplitude * sin(2 * M_PI * frequency * x + phase);
+        return y;
+    }
 };
 
-void GenerateSignal(const std::vector<double>& x, std::vector<double>& y, const sin_signal& sin_sig, int samples) {
-    for (int i = 0; i < samples; i++) {
-        y[i] = sin_sig.amplitude * sin(sin_sig.frequency * x[i] + sin_sig.phase);
+void GenerateSignal(const std::vector<double>& x, std::vector<double>& y, const std::unique_ptr<signal>& sin_sig) {
+    for (int i = 0; i < x.size(); i++) {
+        y[i] = sin_sig->out(x[i]);
     }
 }
-void GenerateAddedSignal(const std::vector<double>& x, std::vector<double>& y, std::vector<sin_signal>& sin_signals, int samples) {
-    for (int i = 0; i < samples; i++) {
+void GenerateAddedSignal(const std::vector<double>& x, std::vector<double>& y, std::vector<std::unique_ptr<signal>>& signals) {
+    for (int i = 0; i < x.size(); i++) {
         y[i] = 0;
-        for (size_t j = 0; j < sin_signals.size(); j++)
+        for (size_t j = 0; j < signals.size(); j++)
         {
-            y[i] = y[i] + sin_signals[j].amplitude * sin(sin_signals[j].frequency * x[i] + sin_signals[j].phase);
+            y[i] = y[i] + signals[j]->out(x[i]);
         }
     }
 }
@@ -32,12 +53,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 {
     bool isDarkMode = true; // Default: Dark Mode
 
-    std::vector<sin_signal> sin_signals = { {1.0f,0.0f,1.0f} };
+    std::vector<std::unique_ptr<signal>> signals;
+
 
     int samplingFreq = 1000;
     float sampleDuration = 10;
 
-#include "imgui_init.h"
+    #include "imgui_init.h"
 
     int samples = 1000;
     std::vector<double> x, y;
@@ -53,9 +75,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         //    PostQuitMessage(0);
         //}
 
-#include "imgui_while_init.h"
+        #include "imgui_while_init.h"
 
-// Get window size using Win32 API
+        // Get window size using Win32 API
         RECT rect;
         GetClientRect(hwnd, &rect);
         int width = rect.right - rect.left;
@@ -123,23 +145,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
 
         if (ImGui::Button("Add Sine Wave")) {
-            sin_signals.push_back({ 1.0f,0.0f,1.0f });
+            signals.push_back(std::make_unique<sin_signal>(1.0, 0.0, 1.0));
         }
 
         ImGui::BeginChild("sigPanelContainer", ImVec2(0, 320), ImGuiChildFlags_Borders, window_flags);
-        for (size_t i = 0; i < sin_signals.size(); i++) {
+        for (size_t i = 0; i < signals.size(); i++) {
+       
+            sin_signal* sin_sig = dynamic_cast<sin_signal*>(signals[i].get());
             ImGui::PushID(i);  // Ensures uniqueness
             ImGui::BeginChild("sigPanel", ImVec2(0, 260), ImGuiChildFlags_Borders, window_flags);
             ImGui::BeginChild("sigSetting", ImVec2(300, 0), ImGuiChildFlags_None, window_flags);
             ImGui::PushItemWidth(200);
             ImGui::Text("Sine Wave");
             ImGui::NewLine();
-            ImGui::InputFloat("Frequency", &sin_signals[i].frequency, 0.1f, 10.0f, "%.3f");
+            ImGui::InputFloat("Frequency", &sin_sig->frequency, 0.1f, 10.0f, "%.3f");
             //ImGui::Spacing();
-            ImGui::InputFloat("Amplitude", &sin_signals[i].amplitude, 0.1f, 10.0f, "%.3f");
+            ImGui::InputFloat("Amplitude", &sin_sig->amplitude, 0.1f, 10.0f, "%.3f");
             ImGui::PopItemWidth();
 
-            if (ImGuiKnobs::Knob("Phase", &sin_signals[i].phase, -2.0f, 2.0f, 0.1f, "%.1fpi", ImGuiKnobVariant_Tick)) {
+            if (ImGuiKnobs::Knob("Phase", &sin_sig->phase, -2.0f, 2.0f, 0.1f, "%.1fpi", ImGuiKnobVariant_Tick)) {
                 // value was changed
             }
             ImGui::SameLine();
@@ -152,7 +176,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             ImGui::NewLine();
             if (ImGui::Button("Delete")) {
 
-                sin_signals.erase(sin_signals.begin() + i);
+                signals.erase(signals.begin() + i);
                 ImGui::EndChild();
                 ImGui::EndChild();
                 ImGui::EndChild();
@@ -167,7 +191,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             ImGui::EndChild();
 
             ImGui::SameLine();
-            GenerateSignal(x, y, sin_signals[i], samples);
+            GenerateSignal(x, y, signals[i]);
             ImGui::SameLine();
             float width = ImGui::GetContentRegionAvail().x;  // Available width
             float height = ImGui::GetContentRegionAvail().y; // Available height
@@ -186,7 +210,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 
 
-        GenerateAddedSignal(x, y, sin_signals, samples);
+        GenerateAddedSignal(x, y, signals);
 
 
         if (ImPlot::BeginPlot("Sine Waves")) {
