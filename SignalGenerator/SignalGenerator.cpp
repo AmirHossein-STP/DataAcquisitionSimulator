@@ -5,6 +5,9 @@
 #include <random>
 #include "SignalGeneratorImgui.h"
 #include "binary_file.hpp"
+#include <chrono>
+#include <thread>
+
 
 # define M_PI           3.14159265358979323846  /* pi */
 
@@ -67,45 +70,50 @@ void GenerateAddedSignal(const std::vector<double>& x, std::vector<double>& y, s
         }
     }
 }
-void save_signal(std::vector<double> y) {
+void save_signal(std::vector<double> y, int sampling_freq, int acq_duration, int acq_interval, int channel_num, int sensor_type, int daq_serial_number) {
     std::string address = "../../Data";
-    int channel_num = 1;
     ACQCONFIG config;
-    config.daq_serial_number = 1;
-    config.acq_interval = 100;
-    config.acq_duration = 10;
-    config.sampling_freq = 1000;
-    config.channels[0].status = 1;
-    config.channels[0].sensitivity = 1;
-    config.channels[0].sensor_type = 1;
-    config.parse_status = 0;
-    config.start_channel = 0;
+    config.daq_serial_number = daq_serial_number;
+    config.acq_interval = acq_interval;
+    config.acq_duration = acq_duration;
+    config.sampling_freq = sampling_freq;
+
+    config.parse_status  = 0;
+    config.start_channel = channel_num;
     config.channel_count = 1;
+
+    config.channels[channel_num].status = 1;
+    config.channels[channel_num].sensitivity = 1;
+    config.channels[channel_num].sensor_type = sensor_type;
     BinaryFile binaryFile(address, config, channel_num);
     binaryFile.insertData(y);
     binaryFile.close();
 }
 
-void sin_panel_draw(std::vector<std::unique_ptr<signal>>& signals, int i) {
-
-}
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     bool isDarkMode = true; // Default: Dark Mode
+    bool is_periodicaly = true;
+
     int samplingFreq = 1000;
     float sampleDuration = 10;
+    int sensor_type = 1;
+    int sampling_interval = 10;
+    int channel_num = 0;
+    int daq_serial_num = 1;
+
     int samples;
     std::vector<double> x, y;
     std::vector<std::unique_ptr<signal>> signals;
 
     #include "imgui_init.h"
 
+    auto start = std::chrono::steady_clock::now();
+
     // Main loop
     bool done = false;
     while (!done)
     {
-
         //if (GetAsyncKeyState(VK_ESCAPE)) {
         //    PostQuitMessage(0);
         //}
@@ -118,7 +126,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         int width = rect.right - rect.left;
         int height = rect.bottom - rect.top;
 
-
         // Set ImGui window properties
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2(width, height));
@@ -129,22 +136,67 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
 
-        ImGui::BeginChild("settingPanel", ImVec2(0, 130), ImGuiChildFlags_Borders, window_flags);
-        ImGui::PushItemWidth(200);
+        ImGui::BeginChild("settingPanel", ImVec2(0, 140), ImGuiChildFlags_Borders, window_flags);
+        
         ImGui::Text("Settings");
-        ImGui::NewLine();
+        //ImGui::NewLine();
+
+        //ImVec2 avail = ImGui::GetContentRegionAvail();
+        int columns = 3, rows = 2;
+        //float spacing = ImGui::GetStyle().ItemSpacing.x;
+        //float itemWidth = (avail.x - (columns - 1) * spacing) / columns;
+
+        ImGui::BeginTable("GridTable", columns,  ImGuiTableFlags_SizingStretchSame);
+        ImGui::TableNextRow(); // Move to the next row
+        ImGui::TableSetColumnIndex(0); // Move to the correct column
+        //ImGui::PushItemWidth(-FLT_MIN);
         ImGui::InputInt("Sampling Frequency (Hz)", &samplingFreq, 1, 200000);
-        ImGui::SameLine();
+        //ImGui::Spacing();
+        //ImGui::SameLine();
+        //ImGui::Spacing();
+        //ImGui::SameLine();
+        //ImGui::SameLine();
+        //ImGui::Spacing();
+        //ImGui::SameLine();
+        //ImGui::SameLine();
+        //ImGui::Spacing();
+        //ImGui::SameLine();
+        ImGui::TableSetColumnIndex(1);
         ImGui::InputFloat("Sample Duration (Second)", &sampleDuration, 0.1f, 10.0f, "%.3f");
-        ImGui::PopItemWidth();
-        ImGui::SameLine();
+        //ImGui::SameLine();
+        ImGui::TableSetColumnIndex(2);
+        ImGui::InputInt("Interval (Second)", &sampling_interval, 1, 10);
+        //ImGui::PopItemWidth();
+        //ImGui::PushItemWidth(100);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::InputInt("Sensor Type", &sensor_type, 1, 10);
+        //ImGui::SameLine();
+        
+        ImGui::TableSetColumnIndex(1);
+        ImGui::InputInt("Channel Number", &channel_num, 1, 10);
+        //ImGui::SameLine();
+        
+        ImGui::TableSetColumnIndex(2);
+        ImGui::InputInt("DAQ Serial Number", &daq_serial_num, 1, 10);
+        //ImGui::SameLine();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        
+        //ImGui::SameLine();
         //if (ImGui::Button("Close Application")) {
         //    PostQuitMessage(0); // Sends WM_QUIT message to exit the app
         //}
-        ImGui::SameLine();
-        if (ImGui::Button("save")) {
-            save_signal(y);
+        //ImGui::SameLine();
+        //ImGui::TableSetColumnIndex(7);
+        if (ImGui::Button("Save Immediately")) {
+            save_signal(y, samplingFreq, sampleDuration, sampling_interval,channel_num, sensor_type ,daq_serial_num);
         }
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Button(is_periodicaly ? "Stop Saving Periodically" : "Start Saving Periodically")) {
+            is_periodicaly = !is_periodicaly; // Toggle the mode
+        }
+        ImGui::TableSetColumnIndex(2);
         if (ImGui::Button(isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode")) {
             isDarkMode = !isDarkMode; // Toggle the mode
             if (isDarkMode) {
@@ -154,6 +206,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 ImGui::StyleColorsLight(); // Apply Light Mode
             }
         }
+        //ImGui::PopItemWidth();
+
+        ImGui::EndTable();
         ImGui::EndChild();
         ImGui::NewLine();
 
@@ -236,7 +291,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 ImGui::NewLine();
                 //ImGui::InputFloat("Frequency", &white_sig->frequency, 0.1f, 10.0f, "%.3f");
                 ////ImGui::Spacing();
-                ImGui::InputDouble("Amplitude", &white_sig->amplitude, 0.1f, 10.0f, "%.3f");
+                ImGui::InputDouble("Amplitude", &white_sig->amplitude, 0.05f, 10.0f, "%.3f");
                 ImGui::PopItemWidth();
 
                 if (ImGui::Button("Delete")) {
@@ -289,10 +344,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         ImGui::PopStyleVar();
 
-
-
         GenerateAddedSignal(x, y, signals);
-
 
         if (ImPlot::BeginPlot("Sine Waves")) {
             ImPlot::PlotLine("Sum of Signals", x.data(), y.data(), x.size());
@@ -300,7 +352,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         ImGui::End();
 
-#include "imgui_while_ending.h"
+        #include "imgui_while_ending.h"
+
+        if ((is_periodicaly == 1)&&(std::chrono::steady_clock::now() - start) > std::chrono::milliseconds(sampling_interval * 1000))
+        {
+            start = std::chrono::steady_clock::now();
+            save_signal(y, samplingFreq, sampleDuration, sampling_interval, channel_num, sensor_type, daq_serial_num);
+        }
     }
 
 
