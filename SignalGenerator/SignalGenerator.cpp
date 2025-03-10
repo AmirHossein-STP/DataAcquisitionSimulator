@@ -24,13 +24,20 @@ public:
         this->frequency = frequency;
         this->phase = phase;
         this->amplitude = amplitude;
+
+        this->start = std::chrono::steady_clock::now();
     }
     double frequency;
     float phase;
     double amplitude;
+    float increase_over_time_ratio = 0;
+    std::chrono::time_point<std::chrono::steady_clock> start;
     double out(double x) override {
         double y;
-        y = amplitude * sin(2 * M_PI * frequency * x + phase);
+        std::chrono::time_point<std::chrono::steady_clock> end = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed_seconds = end - start;
+        y = (amplitude+ double(increase_over_time_ratio*float(elapsed_seconds.count()))/double(60.0)) * sin(2 * M_PI * frequency * x + phase);
+        //y = double(increase_over_time_ratio * float(elapsed_seconds.count())) / double(60.0);
         return y;
     }
 };
@@ -72,6 +79,10 @@ public:
         y = amplitude*dist(gen);
         return y;
 
+    }
+    void reset() {
+        std::mt19937 newgen(1);
+        gen = newgen;
     }
 };
 
@@ -208,6 +219,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ImGui::InputTextWithHint("Data Address", "enter Data folder address here", data_folder_address_char, IM_ARRAYSIZE(data_folder_address_char));
         data_folder_address = data_folder_address_char;
         //ImGui::PopItemWidth();
+
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Button("Reset Transition")) {
+            for (size_t i = 0; i < signals.size(); i++) {
+                if (dynamic_cast<const sin_signal*>(signals[i].get())) {
+                    sin_signal* sin_sig = dynamic_cast<sin_signal*>(signals[i].get());
+                    sin_sig->start = std::chrono::steady_clock::now();
+                }
+            }
+        }
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
 
@@ -281,9 +302,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     // value was changed
                 }
                 ImGui::SameLine();
+                if (ImGuiKnobs::Knob("Increase", &sin_sig->increase_over_time_ratio, -10.0f, 10.0f, 0.2f, "%.1f", ImGuiKnobVariant_Tick)) {
+                    // value was changed
+                }
+                ImGui::SameLine();
 
                 ImGui::BeginChild("DeleteParentParentContainer", ImVec2(0, 0), ImGuiChildFlags_None, window_flags);
-                ImGui::BeginChild("DeleteParentContainer", ImVec2(120, 100), ImGuiChildFlags_None, window_flags);
+                ImGui::BeginChild("DeleteParentContainer", ImVec2(10, 100), ImGuiChildFlags_None, window_flags);
                 ImGui::EndChild();
                 ImGui::SameLine();
                 ImGui::BeginChild("DeleteContainer", ImVec2(120, 100), ImGuiChildFlags_None, window_flags);
@@ -304,6 +329,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 ImGui::EndChild();
 
                 ImGui::SameLine();
+
                 GenerateSignal(x, y, signals[i]);
                 ImGui::SameLine();
                 float width = ImGui::GetContentRegionAvail().x;  // Available width
@@ -355,6 +381,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 ImGui::EndChild();
 
                 ImGui::SameLine();
+
+                //white_sig->reset();
+
                 GenerateSignal(x, y, signals[i]);
                 ImGui::SameLine();
                 float width = ImGui::GetContentRegionAvail().x;  // Available width
