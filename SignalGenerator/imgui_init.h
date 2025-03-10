@@ -29,8 +29,8 @@ io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Con
 io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
 // Setup Dear ImGui style
-ImGui::StyleColorsDark();
-//ImGui::StyleColorsLight();
+//ImGui::StyleColorsDark();
+ImGui::StyleColorsLight();
 
 // Setup Platform/Renderer backends
 ImGui_ImplWin32_Init(hwnd);

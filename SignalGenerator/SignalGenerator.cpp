@@ -19,7 +19,6 @@ public:
 
 class sin_signal : public signal {
 public:
-
     sin_signal(float frequency, float phase, float amplitude)
         : signal() {  // Initialize base class first
         this->frequency = frequency;
@@ -33,6 +32,26 @@ public:
         double y;
         y = amplitude * sin(2 * M_PI * frequency * x + phase);
         return y;
+    }
+};
+
+class pulse_train : public signal {
+public:
+    pulse_train(float frequency, float duty_cycle, float amplitude)
+        : signal() {
+        this->frequency = frequency;
+        this->duty_cycle = duty_cycle;
+        this->amplitude = amplitude;
+    }
+
+    double frequency;
+    float duty_cycle;  // Percentage of the period where the pulse is high (0 to 1)
+    double amplitude;
+
+    double out(double x) override {
+        double period = 1.0 / frequency;
+        double time_in_period = fmod(x, period);
+        return (time_in_period < duty_cycle* period) ? amplitude : 0.0;
     }
 };
 
@@ -70,8 +89,8 @@ void GenerateAddedSignal(const std::vector<double>& x, std::vector<double>& y, s
         }
     }
 }
-void save_signal(std::vector<double> y, int sampling_freq, int acq_duration, int acq_interval, int channel_num, int sensor_type, int daq_serial_number) {
-    std::string address = "../../Data";
+void save_signal(std::vector<double> y, int sampling_freq, int acq_duration, int acq_interval, int channel_num, int sensor_type, int daq_serial_number, std::string address) {
+    //std::string address = "../../Data";
     ACQCONFIG config;
     config.daq_serial_number = daq_serial_number;
     config.acq_interval = acq_interval;
@@ -92,7 +111,7 @@ void save_signal(std::vector<double> y, int sampling_freq, int acq_duration, int
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
-    bool isDarkMode = true; // Default: Dark Mode
+    bool isDarkMode = false; // Default: Dark Mode
     bool is_periodicaly = true;
 
     int samplingFreq = 1000;
@@ -101,6 +120,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     int sampling_interval = 10;
     int channel_num = 0;
     int daq_serial_num = 1;
+
+    std::string data_folder_address;
 
     int samples;
     std::vector<double> x, y;
@@ -136,7 +157,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
 
-        ImGui::BeginChild("settingPanel", ImVec2(0, 140), ImGuiChildFlags_Borders, window_flags);
+        ImGui::BeginChild("settingPanel", ImVec2(0, 150), ImGuiChildFlags_Borders, window_flags);
         
         ImGui::Text("Settings");
         //ImGui::NewLine();
@@ -180,9 +201,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ImGui::TableSetColumnIndex(2);
         ImGui::InputInt("DAQ Serial Number", &daq_serial_num, 1, 10);
         //ImGui::SameLine();
+
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        
+        static char data_folder_address_char[128] = "";
+        ImGui::InputTextWithHint("Data Address", "enter Data folder address here", data_folder_address_char, IM_ARRAYSIZE(data_folder_address_char));
+        data_folder_address = data_folder_address_char;
+        //ImGui::PopItemWidth();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+
         //ImGui::SameLine();
         //if (ImGui::Button("Close Application")) {
         //    PostQuitMessage(0); // Sends WM_QUIT message to exit the app
@@ -190,7 +218,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         //ImGui::SameLine();
         //ImGui::TableSetColumnIndex(7);
         if (ImGui::Button("Save Immediately")) {
-            save_signal(y, samplingFreq, sampleDuration, sampling_interval,channel_num, sensor_type ,daq_serial_num);
+            save_signal(y, samplingFreq, sampleDuration, sampling_interval, channel_num, sensor_type, daq_serial_num, data_folder_address);
         }
         ImGui::TableSetColumnIndex(1);
         if (ImGui::Button(is_periodicaly ? "Stop Saving Periodically" : "Start Saving Periodically")) {
@@ -206,9 +234,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 ImGui::StyleColorsLight(); // Apply Light Mode
             }
         }
-        //ImGui::PopItemWidth();
-
         ImGui::EndTable();
+
+
         ImGui::EndChild();
         ImGui::NewLine();
 
@@ -219,12 +247,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             x[i] = i / double(samplingFreq);
         }
 
-        if (ImGui::Button("Add Sine Wave")) {
+        if (ImGui::Button("+ Add Sine Wave")) {
             signals.push_back(std::make_unique<sin_signal>(1.0, 0.0, 0.5));
         }
         ImGui::SameLine();
-        if (ImGui::Button("Add White noise")) {
+        if (ImGui::Button("+ Add White noise")) {
             signals.push_back(std::make_unique<white_signal>(0.5));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("+ Add Tachometer wave")) {
+            signals.push_back(std::make_unique<pulse_train>(1.0, 0.05, 0.5));
         }
         ImGui::BeginChild("sigPanelContainer", ImVec2(0, 320), ImGuiChildFlags_Borders, window_flags);
         for (size_t i = 0; i < signals.size(); i++) {
@@ -268,7 +300,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 }
                 ImGui::EndChild();
                 ImGui::EndChild();
-
 
                 ImGui::EndChild();
 
@@ -333,6 +364,54 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     ImPlot::EndPlot();
                 }
             }
+            else if (dynamic_cast<const pulse_train*>(signals[i].get())) {
+                pulse_train* pulse_train_sig = dynamic_cast<pulse_train*>(signals[i].get());
+
+                ImGui::BeginChild("sigSetting", ImVec2(300, 0), ImGuiChildFlags_None, window_flags);
+                ImGui::PushItemWidth(200);
+                ImGui::Text("Sine Wave");
+                ImGui::NewLine();
+                ImGui::InputDouble("Frequency", &pulse_train_sig->frequency, 0.1f, 10.0f, "%.3f");
+                //ImGui::Spacing();
+                ImGui::InputDouble("Amplitude", &pulse_train_sig->amplitude, 0.1f, 10.0f, "%.3f");
+                ImGui::PopItemWidth();
+
+                if (ImGuiKnobs::Knob("Duty Cycle", &pulse_train_sig->duty_cycle, -2.0f, 2.0f, 0.1f, "%.1fpi", ImGuiKnobVariant_Tick)) {
+                    // value was changed
+                }
+                ImGui::SameLine();
+
+                ImGui::BeginChild("DeleteParentParentContainer", ImVec2(0, 0), ImGuiChildFlags_None, window_flags);
+                ImGui::BeginChild("DeleteParentContainer", ImVec2(120, 100), ImGuiChildFlags_None, window_flags);
+                ImGui::EndChild();
+                ImGui::SameLine();
+                ImGui::BeginChild("DeleteContainer", ImVec2(120, 100), ImGuiChildFlags_None, window_flags);
+                ImGui::NewLine();
+                if (ImGui::Button("Delete")) {
+
+                    signals.erase(signals.begin() + i);
+                    ImGui::EndChild();
+                    ImGui::EndChild();
+                    ImGui::EndChild();
+                    ImGui::EndChild();
+                    ImGui::PopID();
+                    break; // Stop loop to prevent out-of-bounds errors
+                }
+                ImGui::EndChild();
+                ImGui::EndChild();
+
+                ImGui::EndChild();
+
+                ImGui::SameLine();
+                GenerateSignal(x, y, signals[i]);
+                ImGui::SameLine();
+                float width = ImGui::GetContentRegionAvail().x;  // Available width
+                float height = ImGui::GetContentRegionAvail().y; // Available height
+                if (ImPlot::BeginPlot("Sine Waves", ImVec2(width, 240))) {
+                    ImPlot::PlotLine(("Signal " + std::to_string(i)).c_str(), x.data(), y.data(), x.size());
+                    ImPlot::EndPlot();
+                }
+            }
             /*edfsfdsfsdf*/
 
 
@@ -357,7 +436,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if ((is_periodicaly == 1)&&(std::chrono::steady_clock::now() - start) > std::chrono::milliseconds(sampling_interval * 1000))
         {
             start = std::chrono::steady_clock::now();
-            save_signal(y, samplingFreq, sampleDuration, sampling_interval, channel_num, sensor_type, daq_serial_num);
+            save_signal(y, samplingFreq, sampleDuration, sampling_interval, channel_num, sensor_type, daq_serial_num, data_folder_address);
         }
     }
 
